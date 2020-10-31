@@ -3,7 +3,6 @@ Certified Kubernetes Administrator (CKA)
 
 Table of Contents
 =================
-- [lab](#lab)
 - [Preparing Hosts](#preparing-hosts)
 - [Install Kubernetes](#install-kubernetes)
   - [Simple Cluster](#simple-cluster)
@@ -13,6 +12,15 @@ Table of Contents
     - [enable autocompletion](#enable-autocompletions)
   - [Accessing APIs Using curl](#accessing-apis-using-curl)
   - [Understanfing etcdctl](#understanding-etcdctl)
+- [Running Pods by Using Deployments](#)
+  - [Understanding Namespaces](#understanding-namespaces)
+  - [Exploring Default Namespaces](#exploring-default-namespaces)
+  - [Creating Custom Namespaces](#creating-custom-namespaces)
+  - [Managing Pods and Deployments](#managing-pods-and-deployments)
+    - [Easy way to get YAML file example](#easy-way-to-get-yaml-file-example)
+    - [Managing Deployment Scalability](#managing-deployment-scalability)
+  - [Labels](#labels)
+    - [Deleting Labels](#deleting-labels)
 
 
 ## Preparing Hosts
@@ -203,22 +211,22 @@ yum install -y etcd
 etcdctl -h
 ETCDCTL_API=3 etcdctl -h
 ```
-
-## Kubernetes Objects
-### Understanding Namespaces
+ 
+# Running Pods by Using Deployments
+## Understanding Namespaces
 - Namespaces are a Linux kernel feature that is leveraged up to Kubernetes level
 - Namespaces implement strict resource separation
 - Resource limitation through quota can be implemented at a Namespace level also
 - Use namespaces to separate different customer environments within one Kubernetes cluster
 
-### Exploring Default Namespaces
+## Exploring Default Namespaces
 Four namespaces are defined when a cluster is created
 - default: this is where all Kubernetes resources are created by default
 - kube-nodelease: an administrative namespace where node lease information is stored - may be empty and/or non-existing
 - kube-public: a namespace that is world-readable. Generic information can be stored here, but it's often empty
 - kube-system: contains all infrastructure pods
 
-### Creating Custom Namespaces
+## Creating Custom Namespaces
 - Namespaces can be created usinf YAML files, or from the command line
 - **kubectl get ns**
 - **kubectl get all --all-namespaces**
@@ -226,7 +234,7 @@ Four namespaces are defined when a cluster is created
 - **kubectl describe ns dev**
 - **kubectl get ns dev -o yaml**
 
-### Managing Pods and Deployments
+## Managing Pods and Deployments
 ```
 kubectl create deployment --image=nginx nginx1
 kubectl get all
@@ -243,11 +251,11 @@ deployment.apps/nginx1   1/1     1            1           15s
 NAME                               DESIRED   CURRENT   READY   AGE
 replicaset.apps/nginx1-b97c459f7   1         1         1       15s
 ```
-#### Easy way to get YAML file example
+### Easy way to get YAML file example
 ```
 kubectl create deployment --dry-run --image=nginx nginx0 -o yaml > deployment-example.yaml
 ```
-#### Managing Deployment Scalability
+### Managing Deployment Scalability
 ```
 [root@control ~]# kubectl get deployments.apps
 NAME     READY   UP-TO-DATE   AVAILABLE   AGE
@@ -268,7 +276,7 @@ OR use
 kubectl edit deployments.apps nginx1
 ```
 
-### Labels 
+## Labels 
 ```
 [root@control ~]# kubectl get all --show-labels 
 NAME                         READY   STATUS    RESTARTS   AGE    LABELS
@@ -296,7 +304,7 @@ deployment.apps/nginx1   3/3     3            3           64m
 NAME                               DESIRED   CURRENT   READY   AGE
 replicaset.apps/nginx1-b97c459f7   3         3         3       64m
 ```
-#### Deleting Labels
+### Deleting Labels
 ```
 [root@control ~]# kubectl get pods
 NAME                     READY   STATUS    RESTARTS   AGE
@@ -318,4 +326,3 @@ nginx1-b97c459f7-xsbnf   1/1     Running             0          34m
 ```
 New Pod was created becouse Deployment tracks labels too
 
-#
