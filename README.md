@@ -35,6 +35,10 @@ Table of Contents
     - [Managing Secrets](#managing-secrets)
 - [Managing Pod Networking](#managing-pod-networking)
   - [Pod-to-Pod Communication](#pod-to-pod-communication)
+  - [Service Networking](#service-networking)
+    - [Service Types](#service-types)
+    - [Configuring Services](#configuring-services)
+  - [Working with Ingress](#working-with-ingress)
 
 ## Preparing Hosts
 
@@ -1283,3 +1287,36 @@ PING 192.168.182.15 (192.168.182.15): 56 data bytes
 ### Service Networking
 
 ![service networking](./png/service-networking.png)
+
+- Pod IP addesses are volatile, so something else is needed: the service
+- Service provice access to Pod endpoints by using Labels
+- Service load-balance workload between the Pods that are accessible as an endpoint
+
+#### Service Types
+
+- ClusterIP: the service is internally exposed and is reachable only from within the cluster
+- NodePort: the service is exposed at each node's IP address at a static IP addess. The service can be reached from outside the cluster at nodeip:nodeport
+- LoadBalancer: the cloud provider offers a load balancer that routes traffic to either NodePort or ClusterIP based services
+- ExternalNmae: the service is mapped to an external name that is implemented as a DNS CNAME record
+
+#### Configuring Services
+- From the command line, use **kubectl expose** to create a service that exposes a Pod or Deployment
+- Alternatively, create a YAML file that uses spec.selector to refer to the label that is used in the object that you want to be exposed
+
+```bash
+[root@control ~]# kubectl get pod busy1 --show-labels 
+NAME    READY   STATUS    RESTARTS   AGE   LABELS
+busy1   1/1     Running   0          52m   app=busybox1
+[root@control ~]# kubectl expose pod busy1 --type=NodePort --port=1234
+service/busy1 exposed
+[root@control ~]# kubectl get svc
+NAME         TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE
+busy1        NodePort    10.97.139.139   <none>        1234:30782/TCP   57s
+kubernetes   ClusterIP   10.96.0.1       <none>        443/TCP          32h
+[root@control ~]# kubectl delete service busy1 
+service "busy1" deleted
+```
+### Working with Ingress
+
+![Ingress](./png/ingress.png)
+
