@@ -34,6 +34,7 @@ Table of Contents
     - [Managing ConfigMaps](#managing-configmaps)
     - [Managing Secrets](#managing-secrets)
 - [Managing Pod Networking](#managing-pod-networking)
+  - [Pod-to-Pod Communication](#pod-to-pod-communication)
 
 ## Preparing Hosts
 
@@ -1207,3 +1208,78 @@ Alice
 
 ![pod networking](./png/pod-networking.png)
 ![pod pause container](./png/pod-pause-container.png)
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: net-demo
+spec:
+  containers:
+  - name: busy-net-demo-1
+    image: busybox
+    command:
+      - sleep
+      - '3600'
+  - name: busy-net-demo-2
+    image: busybox
+    command:
+      - sleep
+      - '3600'
+```
+
+```bash
+[root@control ~]# kubectl apply -f pod-net-demo.yaml
+pod/net-demo created
+[root@control ~]# kubectl exec net-demo -c busy-net-demo-1 -- ip a s
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+2: tunl0@NONE: <NOARP> mtu 1480 qdisc noop qlen 1000
+    link/ipip 0.0.0.0 brd 0.0.0.0
+4: eth0@if15: <BROADCAST,MULTICAST,UP,LOWER_UP,M-DOWN> mtu 1440 qdisc noqueue
+    link/ether 7e:5e:f0:ee:6c:41 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.235.139/32 brd 192.168.235.139 scope global eth0
+       valid_lft forever preferred_lft forever
+[root@control ~]# kubectl exec net-demo -c busy-net-demo-2 -- ip a s
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+2: tunl0@NONE: <NOARP> mtu 1480 qdisc noop qlen 1000
+    link/ipip 0.0.0.0 brd 0.0.0.0
+4: eth0@if15: <BROADCAST,MULTICAST,UP,LOWER_UP,M-DOWN> mtu 1440 qdisc noqueue
+    link/ether 7e:5e:f0:ee:6c:41 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.235.139/32 brd 192.168.235.139 scope global eth0
+       valid_lft forever preferred_lft forever
+[root@control ~]# kubectl get pods -o wide  | grep net
+net-demo                 2/2     Running   0          3m44s   192.168.235.139   worker1   <none>           <none>
+```
+
+### Pod-to-Pod Communication
+- Pods are accessible on a specific Pod network
+- Pods can communicate directly with one another and are all in the same network namespace
+- The Container Network interface (CNI) provides a framework in which networking modules can be used to estabilish communication according to different needs
+- If no limitations are implemented, all Pods can communicate to all other Pods without limitations
+#### Netwrok Policies
+- Network Policies make it possible to implement restrictions on direct traffic between Pods
+- Using a Network Policy is only possible if the network plugin used offers the required support
+
+#### example
+```bash
+[root@control ~]# kubectl get pods -o wide | grep busy
+busy1                    1/1     Running   0          20s     192.168.189.76    worker2   <none>           <none>
+busy2                    1/1     Running   0          17s     192.168.182.15    worker3   <none>           <none>
+[root@control ~]# kubectl exec busy1 -- ping 192.168.182.15
+PING 192.168.182.15 (192.168.182.15): 56 data bytes
+64 bytes from 192.168.182.15: seq=0 ttl=62 time=1.090 ms
+64 bytes from 192.168.182.15: seq=1 ttl=62 time=0.732 ms
+64 bytes from 192.168.182.15: seq=2 ttl=62 time=0.749 ms
+64 bytes from 192.168.182.15: seq=3 ttl=62 time=0.725 ms
+^C
+```
+
+### Service Networking
+
+![service networking](./png/service-netwroking.png)
