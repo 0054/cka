@@ -21,7 +21,12 @@ Table of Contents
     - [Managing Deployment Scalability](#managing-deployment-scalability)
   - [Labels](#labels)
     - [Deleting Labels](#deleting-labels)
-
+  - [Rolling Updates](#rolling-updates)
+  - [Understanding Init Containers](#understanding-init-containers)
+  - [Understanding StatefulSets](#understanding-statefulset)
+    - [StatefilSets Limitations](#statefulset-limitations)
+  - [Using DaemonSets](#using-daemonsets)
+- [Managing Storage](#managing-storage)
 
 ## Preparing Hosts
 
@@ -325,4 +330,333 @@ nginx1-b97c459f7-n6m7h   1/1     Running             0          77m
 nginx1-b97c459f7-xsbnf   1/1     Running             0          34m
 ```
 New Pod was created becouse Deployment tracks labels too
+
+
+## Rolling Updates
+
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  labels:
+    app: nginx
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.14.2
+        ports:
+        - containerPort: 80
+```
+
+Deployment ensures that only a certain number of Pods are down while they are being updated. By default, it ensures that at least 75% of the desired number of Pods are up (25% max unavailable).
+
+Deployment also ensures that only a certain number of Pods are created above the desired number of Pods. By default, it ensures that at most 125% of the desired number of Pods are up (25% max surge).
+
+For Example:
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rolling-nginx
+spec:
+  replicas: 4
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      name: nginx
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.8
+```
+```
+[root@control ~]# kubectl apply -y rollin.yaml
+deployment.apps/rolling-nginx created
+[root@control ~]# kubectl rollout history deployment rolling-nginx 
+deployment.apps/rolling-nginx 
+REVISION  CHANGE-CAUSE
+1         <none>
+```
+then change ...containers.image  version
+```
+kubectl edit deployments rolling-ngine
+deployment.apps/rolling-nginx edited
+kubectl get replicasets.apps
+NAME                       DESIRED   CURRENT   READY   AGE
+rolling-nginx-7547488759   4         4         4       119s
+rolling-nginx-7794bdf7b5   0         0         0       7m9s
+
+kubectl rollout history deployment rolling-nginx --revision=2
+deployment.apps/rolling-nginx with revision #2
+Pod Template:
+  Labels:       app=nginx
+        pod-template-hash=7547488759
+  Containers:
+   nginx:
+    Image:      nginx:1.15
+    Port:       <none>
+    Host Port:  <none>
+    Environment:        <none>
+    Mounts:     <none>
+  Volumes:      <none>
+
+kubectl rollout history deployment rolling-nginx --revision=1
+deployment.apps/rolling-nginx with revision #1
+Pod Template:
+  Labels:       app=nginx
+        pod-template-hash=7794bdf7b5
+  Containers:
+   nginx:
+    Image:      nginx:1.8
+    Port:       <none>
+    Host Port:  <none>
+    Environment:        <none>
+    Mounts:     <none>
+  Volumes:      <none>
+
+kubectl rollout undo deployment rolling-nginx --to-revision=1
+deployment.apps/rolling-nginx rolled back
+```
+
+## Understanding Init Containers
+
+- If a Pod has 2 containers, one of them can be used as an init container. An init container can be used to prepare something and this will be done before the main application is started
+- Init containers will always run to completion, and only after it has completed successfully, will the next container start
+- Init containers are defined using the initContainers filed in the Pod spec
+
+for example:
+```
+apiVersion: v1
+kind: Pod
+metadata: 
+  name: initpod
+spec:
+  containers:
+  - name: after-init
+    image: busybox
+    command: ['sh', '-c', 'echo its running! && sleep 3600'] 
+  initContainers:
+  - name: init-myservice
+    image: busybox
+    command: ['sh', '-c', 'until nslookup myservice; do echo waiting for myservice; sleep 2; done;'] 
+
+
+[root@control ~]# kubectl apply init-example.yaml
+pod/initpod created
+[root@control ~]# kubectl get pods
+NAME                     READY   STATUS     RESTARTS   AGE
+initpod                  0/1     Init:0/1   0          36s
+
+[root@control ~]# kubectl expose deployment nginx --port=80 --name=myservice
+[root@control ~]# kubectl get pods
+NAME                     READY   STATUS    RESTARTS   AGE
+initpod                  1/1     Running   0          7m59s
+nginx-6799fc88d8-s5428   1/1     Running   0          56s
+```
+
+## Understanding StatefulSets
+
+- StatefulSets are line deployments, but provide guarantees about the ordering and uniqueness of Pods
+- StatefulSet maintains a unique identity for each Pod, which makes it so Pods are not interchangeable
+- StatefulSets are valuable if the application has one of the following requirements
+  - unique network identifiers
+  - stable persistent storage
+  - ordered deployment and scaling
+  - ordered automated rolling updates
+- [documentation link](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/)
+
+### StatefilSets Limitations
+
+StatefulSets have a number of limitations, and for that reason should only be used if their features are specifically required
+- Storage must be provisioned by a PersistentVolume
+- Deleting a StatefulSet will not delete associated storage
+- A Headless Service is required to provide network identity for Pods in a StatefulSet
+- To ensure Pods in a StatefulSet are terminated properly, the number of Pods should be scaled down to 0 before deleting the StatefulSet
+
+
+### Example
+```
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+  labels:
+    app: nginx
+spec:
+  ports:
+  - port: 80
+    name: web
+  clusterIP: None
+  selector:
+    app: nginx
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: web
+spec:
+  selector:
+    matchLabels:
+      app: nginx # has to match .spec.template.metadata.labels
+  serviceName: "nginx"
+  replicas: 3 # by default is 1
+  template:
+    metadata:
+      labels:
+        app: nginx # has to match .spec.selector.matchLabels
+    spec:
+      terminationGracePeriodSeconds: 10
+      containers:
+      - name: nginx
+        image: k8s.gcr.io/nginx-slim:0.8
+        ports:
+        - containerPort: 80
+          name: web
+        volumeMounts:
+        - name: www
+          mountPath: /usr/share/nginx/html
+  volumeClaimTemplates:
+  - metadata:
+      name: www
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: "my-storage-class"
+      resources:
+        requests:
+          storage: 1Gi
+```
+
+## Using DaemonSets
+
+- A DaemonSet ensures that all or some nodes run a copy of Pod
+- Daemonsets are useful for services that should be running everywhere
+- As nodes are added to the cluster, Pods are added to them automatically by the DaemonSet
+- Deleting a DaemonSet will delete the Pods it created
+- DaemonSets are used in specific cases
+  - Running cluster storage daemon such as ceph or glusterd on each node
+  - Running log collecgion daemons on every node
+  - Running monitoring daemons such as collectd, Prometheus Node Exporter and others on each node
+
+
+example:
+```
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluentd-elasticsearch
+  namespace: kube-system
+  labels:
+    k8s-app: fluentd-logging
+spec:
+  selector:
+    matchLabels:
+      name: fluentd-elasticsearch
+  template:
+    metadata:
+      labels:
+        name: fluentd-elasticsearch
+    spec:
+      tolerations:
+      - key: node-role.kubernetes.io/master
+        effect: NoSchedule
+      containers:
+      - name: fluentd-elasticsearch
+        image: quay.io/fluentd_elasticsearch/fluentd:v2.5.2
+        resources:
+          limits:
+            memory: 200Mi
+          requests:
+            cpu: 100m
+            memory: 200Mi
+        volumeMounts:
+        - name: varlog
+          mountPath: /var/log
+        - name: varlibdockercontainers
+          mountPath: /var/lib/docker/containers
+          readOnly: true
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: varlog
+        hostPath:
+          path: /var/log
+      - name: varlibdockercontainers
+        hostPath:
+          path: /var/lib/docker/containers
+```
+
+```
+[root@control ~]# kubectl apply -f daemonset-fluentd.yaml
+daemonset.apps/fluentd-elasticsearch created
+[root@control ~]# kubectl get daemonsets.apps -n kube-system
+NAME                    DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR            AGE
+calico-node             4         4         4       4            4           kubernetes.io/os=linux   24h
+fluentd-elasticsearch   4         4         4       4            4           <none>                   35s
+kube-proxy              4         4         4       4            4           kubernetes.io/os=linux   24h
+[root@control ~]# kubectl get pods -n kube-system  | grep elastic
+fluentd-elasticsearch-4cx76              1/1     Running   0          2m2s
+fluentd-elasticsearch-7b7dp              1/1     Running   0          2m2s
+fluentd-elasticsearch-g5nb7              1/1     Running   0          2m2s
+fluentd-elasticsearch-r49hf              1/1     Running   0          2m2s
+
+```
+
+### task: run a pod on each worker
+```
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nginx-everynode
+  labels:
+    k8s-app: nginx-every
+spec:
+  selector:
+    matchLabels:
+      name: nginx-everynode
+  template:
+    metadata:
+      labels:
+        name: nginx-everynode
+    spec:
+      containers:
+      - name: nginx-everynode
+        image: nginx
+```
+```
+[root@control ~]# kubectl apply -f daemonset-example.yaml
+daemonset.apps/nginx-everynode created
+[root@control ~]# kubectl get pods --selector name=nginx-everynode -o wide
+NAME                    READY   STATUS    RESTARTS   AGE     IP                NODE      NOMINATED NODE
+READINESS GATES
+nginx-everynode-4q5bj   1/1     Running   0          2m14s   192.168.182.10    worker3   <none>
+<none>
+nginx-everynode-cngpt   1/1     Running   0          2m14s   192.168.189.72    worker2   <none>
+<none>
+nginx-everynode-nzsj2   1/1     Running   0          2m14s   192.168.235.136   worker1   <none>
+<none>
+
+```
+
+## Managing Storage
+
+![managing storage](./png/managing-storage.png)
+
 
