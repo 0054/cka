@@ -7,6 +7,16 @@ Table of Contents
 - [Install Kubernetes](#install-kubernetes)
   - [Simple Cluster](#simple-cluster)
 - [Ingress Controller](#ingress-controller)
+  - [Installation with Manifests](#installation-with-manifests)
+    - [Configure RBAC](#configure-rbac)
+    - [Create Common Resources](#create-common-resources)
+    - [Create Custom Resources](#create-custom-resources)
+  - [Deploy the Ingress Controller](#deploy-the-ingress-controller)
+    - [Run the Ingress Controller](#run-the-ingress-controller)
+    - [Check that the Ingress Controller is Running](#check-that-the-ingess-controller-is-running)
+  - [Get Access to the Ingress Controller](#get-access-to-the-ingress-controller)
+    - [Create a Service for the Ingress Controller Pods](#create-a-service-for-the-ingress-controller-pods)
+  - [Uninstall the Ingress Controller](#uninstall-the-ingress)
 - [Understanding API Access and Commands](#understanding-api-access-and-commands)
   - [Options for Accessing the API](#options-for-accessing-the-api)
   - [Using kubectl](#using-kubectl)
@@ -156,6 +166,142 @@ kubectl label nodes worker1 node-role.kubernetes.io/worker-
 # Ingress Controller
 under construction
 [Ingress Controllers](https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/)
+
+In order for the **Ingress** resource to work, the cluster must have an **ingress controller** running.
+Unlike other types of controllers which run as part of the kube-controller-manager binary
+
+## Installation with Manifests
+[NGINX Ingress Controller](https://www.nginx.com/products/nginx/kubernetes-ingress-controller)
+- For NGINX Ingress controller, use the image nginx/nginx-ingress from DockerHub.
+- Clone the Ingress controller repo and change into the deployments folder:
+  ```bash
+[root@control ~]# git clone https://github.com/nginxinc/kubernetes-ingress
+[root@control ~]# cd kubernetes-ingress/deployments/
+[root@control deployments]# ll
+total 28
+drwxr-xr-x 2 root root 4096 Nov  2 00:17 common
+drwxr-xr-x 2 root root 4096 Nov  2 00:17 daemon-set
+drwxr-xr-x 2 root root 4096 Nov  2 00:17 deployment
+drwxr-xr-x 4 root root 4096 Nov  2 00:17 helm-chart
+drwxr-xr-x 2 root root 4096 Nov  2 00:17 rbac
+-rw-r--r-- 1 root root  222 Nov  2 00:17 README.md
+drwxr-xr-x 2 root root 4096 Nov  2 00:17 service
+[root@control deployments]# git checkout v1.9.0
+Note: checking out 'v1.9.0'.
+...
+  ```
+
+### Configure RBAC
+- Create a namespace and a service account for the Ingress controller:
+```bash
+[root@control deployments]# kubectl apply -f common/ns-and-sa.yaml
+namespace/nginx-ingress created
+serviceaccount/nginx-ingress created
+```
+- Create a cluster role and cluster role binding for the service account:
+```bash
+[root@control deployments]# kubectl apply -f rbac/rbac.yaml
+clusterrole.rbac.authorization.k8s.io/nginx-ingress created
+clusterrolebinding.rbac.authorization.k8s.io/nginx-ingress created
+```
+### Create Common Resources
+In this section, we create resources common for most of the Ingress Controller installations:
+
+- Create a secret with a TLS certificate and a key for the default server in NGINX
+```bash
+[root@control deployments]# kubectl apply -f common/default-server-secret.yaml
+secret/default-server-secret created
+```
+**Note**: The default server returns the Not Found page with the 404 status code for all requests for domains for which there are no Ingress rules defined. For testing purposes we include a self-signed certificate and key that we generated. However, we recommend that you use your own certificate and key
+- Create a config map for customizing NGINX configuration:
+```bash
+[root@control deployments]# kubectl apply -f common/nginx-config.yaml
+configmap/nginx-config created
+```
+- Create an IngressClass resource (for Kubernetes >= 1.18):
+```bash
+[root@control deployments]# kubectl apply -f common/ingress-class.yaml
+ingressclass.networking.k8s.io/nginx created
+```
+**Note**: in v1.19.3 Kubernetes you will receive a warning:
+```bash
+Warning: networking.k8s.io/v1beta1 IngressClass is deprecated in v1.19+, unavailable in v1.22+; use networking.k8s.io/v1 IngressClassList
+```
+to avoid this just change the apiVersion to the one offered by Kubernetes **networking.k8s.io/v1**, in all other similar cases, do the same
+**Note**: If you would like to set the Ingress Controller as the default one, uncomment the annotation ingressclass.kubernetes.io/is-default-class. With this annotation set to true all the new Ingresses without an ingressClassName field specified will be assigned this IngressClass.
+**Note**: The Ingress Controller will fail to start without an IngressClass resource.
+
+## Create Custom Resources
+
+- Create custom resource definitions for [VirtualServer and VirtualServerRoute, TransportServer](https://docs.nginx.com/nginx-ingress-controller/configuration/virtualserver-and-virtualserverroute-resources/) and [Policy](https://docs.nginx.com/nginx-ingress-controller/configuration/policy-resource/) resources:
+```bash
+[root@control deployments]# kubectl apply -f common/vs-definition.yaml
+Warning: apiextensions.k8s.io/v1beta1 CustomResourceDefinition is deprecated in v1.16+, unavailable in v1.22+; use apiextensions.k8s.io/v1 CustomResourceDefinition
+customresourcedefinition.apiextensions.k8s.io/virtualservers.k8s.nginx.org created
+[root@control deployments]# kubectl apply -f common/vsr-definition.yaml
+Warning: apiextensions.k8s.io/v1beta1 CustomResourceDefinition is deprecated in v1.16+, unavailable in v1.22+; use apiextensions.k8s.io/v1 CustomResourceDefinition
+customresourcedefinition.apiextensions.k8s.io/virtualserverroutes.k8s.nginx.org created
+[root@control deployments]# kubectl apply -f common/ts-definition.yaml
+Warning: apiextensions.k8s.io/v1beta1 CustomResourceDefinition is deprecated in v1.16+, unavailable in v1.22+; use apiextensions.k8s.io/v1 CustomResourceDefinition
+customresourcedefinition.apiextensions.k8s.io/transportservers.k8s.nginx.org created
+[root@control deployments]# kubectl apply -f common/policy-definition.yaml
+Warning: apiextensions.k8s.io/v1beta1 CustomResourceDefinition is deprecated in v1.16+, unavailable in v1.22+; use apiextensions.k8s.io/v1 CustomResourceDefinition
+customresourcedefinition.apiextensions.k8s.io/policies.k8s.nginx.org created
+```
+## Deploy the Ingress Controller
+
+We include two options for deploying the Ingress controller:
+- _Deployment_. Use a Deployment if you plan to dynamically change the number of Ingress controller replicas
+- _DaemonSet_. Use a DaemonSet for deploying the Ingress controller on every node or a subset of nodes.
+
+**Note**: Before creating a Deployment or Daemonset resource, make sure to update the [command-line arguments](https://docs.nginx.com/nginx-ingress-controller/configuration/global-configuration/command-line-arguments/) of the Ingress Controller container in the corresponding manifest file according to your requirements.
+
+### Run the Ingress Controller
+- Use a Deployment. When you run the Ingress Controller by using a Deployment, by default, Kubernetes will create one Ingress controller pod.
+For NGINX, run:
+```bash
+[root@control deployments]# kubectl apply -f deployment/nginx-ingress.yaml
+deployment.apps/nginx-ingress created
+```
+
+- Use a DaemonSet: When you run the Ingress Controller by using a DaemonSet, Kubernetes will create an Ingress controller pod on every node of the cluster.
+**See also**: See the Kubernetes [DaemonSet docs](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/) to learn how to run the Ingress controller on a subset of nodes instead of on every node of the cluster.
+For NGINX, run:
+```bash
+$ kubectl apply -f daemon-set/nginx-ingress.yaml
+```
+### Check that the Ingress Controller is Running
+```bash
+[root@control deployments]# kubectl get pods -n nginx-ingress
+NAME                             READY   STATUS    RESTARTS   AGE
+nginx-ingress-5748594fc8-fpt26   1/1     Running   0          2m10s
+```
+
+## Get Access to the Ingress Controller
+
+**If you created a daemonset**, ports 80 and 443 of the Ingress controller container are mapped to the same ports of the node where the container is running. To access the Ingress controller, use those ports and an IP address of any node of the cluster where the Ingress controller is running.
+
+**If you created a deployment**, below are two options for accessing the Ingress controller pods.
+
+### Create a Service for the Ingress Controller Pods
+
+- Use a NodePort service.
+Create a service with the type NodePort:
+```bash
+[root@control deployments]# kubectl apply -f service/nodeport.yaml
+service/nginx-ingress created
+```
+
+## Uninstall the Ingress Controller
+- Delete the nginx-ingress namespace to uninstall the Ingress controller along with all the auxiliary resources that were created:
+```bash
+$ kubectl delete namespace nginx-ingress
+```
+- Delete the ClusterRole and ClusterRoleBinding created in that step:
+```bash
+$ kubectl delete clusterrole nginx-ingress
+$ kubectl delete clusterrolebinding nginx-ingress
+```
 
 
 # Understanding API Access and Commands
