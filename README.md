@@ -1206,4 +1206,4 @@ Alice
 ## Managing Pod Networking
 
 ![pod networking](./png/pod-networking.png)
-![pod pause container](./png/pod-pause-container)
+![pod pause container](./png/pod-pause-container.png)
