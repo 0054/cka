@@ -143,6 +143,8 @@ kubectl label nodes worker1 node-role.kubernetes.io/worker-
 
 # Understanding API Access and Commands
 
+![Core-Kubernetes-objects](./png/core-kubernetes-objects.png)
+
 - API access is regulated by using RBAC (Role Based Access Control)
 - In RBAC, user accounts are identified as a  set of certificates associated to a name, defined in **~/.kube/config**
 - Use **kubectl auth can-i** to verify what you can do with current credentials
