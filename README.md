@@ -27,6 +27,12 @@ Table of Contents
     - [StatefilSets Limitations](#statefulset-limitations)
   - [Using DaemonSets](#using-daemonsets)
 - [Managing Storage](#managing-storage)
+  - [Configuring PV Storage](#configuring-pv-storage) 
+  - [Configuring PVCs](#configuring-pvcs)
+  - [Configuring Pod Storage with PV and PVC](#configuring-pod-storage-with-pv-and-pvs)
+  - [ConfigMaps and Secrets](#configmaps-and-secrets)
+    - [Managing ConfigMaps](#managing-configmaps)
+    - [Managing Secrets](#managing-secrets)
 
 ## Preparing Hosts
 
@@ -658,7 +664,7 @@ nginx-everynode-nzsj2   1/1     Running   0          2m14s   192.168.235.136   w
 
 ```
 
-## Managing Storage
+# Managing Storage
 
 ![managing storage](./png/managing-storage.png)
 
@@ -742,5 +748,457 @@ spec:
     path: /data
     server: myserver
     readOnly: false
+```
+
+## Configuring PVCs
+
+pvc.yaml
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pv-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+```bash
+[root@control ~]# kubectl apply -f pvc.yaml
+persistentvolumeclaim/pv-claim created
+[root@control ~]# kubectl get pvc
+NAME       STATUS   VOLUME      CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+pv-claim   Bound    pv-volume   2Gi        RWO                           10s
+
+```
+
+pvc-nfs.yml
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-pv-claim
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Mi
+```
+```bash
+[root@control ~]# kubectl get pvc
+NAME           STATUS   VOLUME      CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+nfs-pv-claim   Bound    pv-nfs      1Gi        RWX                           5s
+pv-claim       Bound    pv-volume   2Gi        RWO                           3m45s
+
+[root@control ~]# kubectl get pv
+NAME        CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM                  STORAGECLASS   REASON   AGE
+pv-nfs      1Gi        RWX            Retain           Bound    default/nfs-pv-claim                           2m32s
+pv-volume   2Gi        RWO            Retain           Bound    default/pv-claim                               78m
+```
+
+
+## Configuring Pod Storage with PV and PVC
+
+pv-pod.yaml
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pv-pod
+spec:
+  volumes:
+    - name: pv-storage
+      persistentVolumeClaim:
+        claimName: pv-claim
+  conrainers:
+    - name: pv-container
+      image: nginx
+      ports:
+        - containerPort: 80
+          name: 'http-server'
+      volumeMounts:
+        - mountPath: '/usr/share/nginx/html'
+          name: pv-storage
+```
+```bash
+[root@control ~]# kubectl apply -f pv-pod.yaml
+pod/pv-pod created
+
+[root@control ~]# kubectl describe pod pv-pod
+...
+    Mounts:
+      /usr/share/nginx/html from pv-storage (rw)
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-n4mt4 (ro)
+...
+Volumes:
+  pv-storage:
+    Type:       PersistentVolumeClaim (a reference to a PersistentVolumeClaim in the same namespace)
+    ClaimName:  pv-claim
+    ReadOnly:   false
+...
+```
+
+nfs-pv-pod.yaml
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nfs-pv-pod
+spec:
+  volumes:
+    - name: nfs-pv
+      persistentVolumeClaim:
+        claimName: nfs-pv-claim
+  containers:
+    - name: nfs-client1
+      image: centos:latest
+      command:
+        - sleep
+        - "3600"
+      volumeMounts:
+        - mountPath: '/nfsshare'
+          name: nfs-pv
+    - name: nfs-client2
+      image: centos:latest
+      command:
+        - sleep
+        - "3600"
+      volumeMounts:
+        - mountPath: '/nfsshare'
+          name: nfs-pv
+```
+```bash
+kubectl apply -f nfs-pv-pod.yaml
+kubectl describe pod nfs-pv-pod
+...
+       In some cases useful info is found in syslog - try
+       dmesg | tail or so.
+  Warning  FailedMount  56s  kubelet  MountVolume.SetUp failed for volume "pv-nfs" : mount failed: exit status 32
+Mounting command: systemd-run
+Mounting arguments: --description=Kubernetes transient mount for /var/lib/kubelet/pods/0d48fc8b-9fc9-458b-a347-db54031f6f07/volumes/kubernetes.io~nfs/pv-nfs --scope -- mount -t nfs myserver:/data /var/lib/kubelet/pods/0d48fc8b-9fc9-458b-a347-db54031f6f07/volumes/kubernetes.io~nfs/pv-nfs
+Output: Running scope as unit run-21429.scope.
+mount: wrong fs type, bad option, bad superblock on myserver:/data,
+       missing codepage or helper program, or other error
+       (for several filesystems (e.g. nfs, cifs) you might
+       need a /sbin/mount.<type> helper program)
+
+       In some cases useful info is found in syslog - try
+       dmesg | tail or so.
+...
+```
+
+
+## ConfigMaps and Secrets
+
+- ConfigMaps and Secrets are about deconupling data from the Pod that needs them
+- ConfigMaps are clear-text, Secrets are base64 encoded
+- Different types can be used:
+  - Files
+  - Directories
+  - Literals
+- No matter which type is used, all the associated data is stored in the ConfigMap or Secret object
+- Secrets are mainly used to push variables 
+
+### Managing ConfigMaps
+
+
+#### config file example
+nginx-custom-config.conf
+```
+server {
+    listen        8888;
+    server_name   localhost;
+    location / {
+        root /usr/share/nginx/html;
+        index index.html index.htm;
+    }
+}
+```
+
+```bash
+[root@control ~]# kubectl create cm nginx-cm --from-file nginx-custom-config.conf
+configmap/nginx-cm created
+[root@control ~]# kubectl get cm
+NAME       DATA   AGE
+nginx-cm   1      49s
+[root@control ~]# kubectl get cm nginx-cm -o yaml
+apiVersion: v1
+data:
+  nginx-custom-config.conf: |
+    server {
+        listen        8888;
+        server_name   localhost;
+        location / {
+            root /usr/share/nginx/html;
+            index index.html index.htm;
+        }
+    }
+kind: ConfigMap
+metadata:
+  creationTimestamp: "2020-11-01T12:21:00Z"
+  managedFields:
+  - apiVersion: v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:data:
+        .: {}
+        f:nginx-custom-config.conf: {}
+    manager: kubectl-create
+    operation: Update
+    time: "2020-11-01T12:21:00Z"
+  name: nginx-cm
+  namespace: default
+  resourceVersion: "256292"
+  selfLink: /api/v1/namespaces/default/configmaps/nginx-cm
+  uid: 6fc4481a-663d-455c-b3cc-8b67c2efa147
+
+
+```
+
+pod-cm-example.yaml
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-cm
+  labels:
+    role: web
+spec:
+  containers:
+  - name: nginx-cm
+    image: nginx
+    volumeMounts:
+    - name: conf
+      mountPath: /etc/nginx/conf.d
+  volumes:
+  - name: conf
+    configMap:
+      name: nginx-cm
+      items:
+      - key: nginx-custom-config.conf
+        path: default.conf
+```
+
+```bash
+[root@control ~]# kubectl apply -f pod-cm-example.yaml
+pod/nginx-cm created
+[root@control ~]# kubectl exec -it nginx-cm -- ls /etc/nginx/conf.d/
+default.conf
+
+```
+
+#### env variable example
+
+```bash
+[root@control ~]# kubectl create cm myconfig --from-literal=color=red
+configmap/myconfig created
+[root@control ~]# kubectl get cm myconfig -o yaml
+```
+```yaml
+apiVersion: v1
+data:
+  color: red
+kind: ConfigMap
+metadata:
+  creationTimestamp: "2020-11-01T13:08:30Z"
+  managedFields:
+  - apiVersion: v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:data:
+        .: {}
+        f:color: {}
+    manager: kubectl-create
+    operation: Update
+    time: "2020-11-01T13:08:30Z"
+  name: myconfig
+  namespace: default
+  resourceVersion: "263418"
+  selfLink: /api/v1/namespaces/default/configmaps/myconfig
+  uid: 40d7bdbd-a772-41b3-98f8-c5190333482c
+```
+
+pod-cm-example2.yaml
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-container
+spec:
+  containers:
+  - name: test
+    image: nginx
+    env:
+    - name: COLOR
+      valueFrom:
+        configMapKeyRef:
+          name: myconfig
+          key: color
+  restartPolicy: Never
+```
+
+```
+[root@control ~]# kubectl apply -f pod-cm-example2.yaml
+pod/test-container created
+
+[root@control ~]# kubectl describe pod test-container
+...
+    Environment:
+      COLOR:  <set to the key 'color' of config map 'myconfig'>  Optional: false
+...
+[root@control ~]# kubectl exec -it test-container -- bash
+root@test-container:/# echo $COLOR
+red
+
+```
+
+### Managing Secrets
+
+- Secrets allow for storage of sensitive data such as passwords, Auth tokens and SSH keys
+- Using Secrets makes sense, so the data doesn't have to ve put in a Pod, and reduces the risk of accidental exposure
+- Some Secrets are automatically created by the system, users can also use Secrets
+- Secrets are used by Pods in the way that ConfigMap are used. They can also be created by the Kubelet while pulling an image
+- Secrets are not encrypted, they are encoded
+
+#### Thee types of Secrets are offered
+- docker-registry: user for connecting to a Docker registry
+- TLS: creates a TLS Secret
+- generic: creates a Secret from a local file, directory or literal value
+
+#### Understanding Built-in Secrets
+- Kubernetes automatically creates Secrets that contain credentials for accessing the API, and automatically modifies the Pods to use this type of Secret
+- Use **kubectl describe pods <podname>** and look for the mount section to see them
+
+#### Creating Secrets
+- While creating a secret, the text value must be **base64** encoded
+- When using **kubectl create secret** this is happening automatically
+- When creating a secret from a YAML file, you'll need use the **base64** utility to generate the encoded string and use that in the YAML file
+
+#### Using Secrets
+- From Pods, Secrets are used in the way ConfigMaps are used
+- Mounted as volumes
+- Imported as variables
+
+
+#### example
+```bash
+ot@control ~]# kubectl create secret generic topsecret --from-literal=password=P@ssw0rd --from-literal=user=Alice
+secret/topsecret created
+[root@control ~]# kubectl get secrets topsecret
+NAME        TYPE     DATA   AGE
+topsecret   Opaque   2      24s
+[root@control ~]# kubectl get secrets topsecret  -o yaml
+```
+```yaml
+apiVersion: v1
+data:
+  password: UEBzc3cwcmQ=
+  user: QWxpY2U=
+kind: Secret
+metadata:
+  creationTimestamp: "2020-11-01T13:35:22Z"
+  managedFields:
+  - apiVersion: v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:data:
+        .: {}
+        f:password: {}
+        f:user: {}
+      f:type: {}
+    manager: kubectl-create
+    operation: Update
+    time: "2020-11-01T13:35:22Z"
+  name: topsecret
+  namespace: default
+  resourceVersion: "267450"
+  selfLink: /api/v1/namespaces/default/secrets/topsecret
+  uid: 28720b93-622f-4611-a3be-36bed758ada3
+type: Opaque
+```
+decode base64
+```bash
+[root@control ~]# echo -n UEBzc3cwcmQ=  | base64 -d
+base6w0rd
+[root@control ~]# echo -n QWxpY2U= | base64 -d
+Alice
+
+```
+
+**example with volume secrets**
+pod-secret.yaml
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-secret
+spec:
+  containers:
+  - name: pod-secret
+    image: busybox
+    command:
+      - sleep
+      - '3600'
+    volumeMounts:
+    - mountPath: /topsecret
+      name: secret
+  volumes:
+  - name: secret
+    secret:
+      secretName: topsecret
+```
+
+```bash
+[root@control ~]# kubectl apply -f pod-secret.yaml
+pod/pod-secret created
+[root@control ~]# kubectl exec -it pod-secret -- ls /topsecret
+password  user
+[root@control ~]# kubectl exec -it pod-secret -- cat /topsecret/password
+P@ssw0rd
+[root@control ~]# kubectl exec -it pod-secret -- cat /topsecret/user
+Alice
+```
+
+**example with env secrets**
+
+pod-secret-var.yaml
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-secret-var
+spec:
+  containers:
+  - name: pod-secret-var
+    image: busybox
+    command:
+      - sleep
+      - '3600'
+    env:
+    - name: PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: topsecret
+          key: password
+    - name: USERNAME
+      valueFrom:
+        secretKeyRef:
+          name: topsecret
+          key: user
+```
+
+```bash
+[root@control ~]# kubectl apply -f pod-secret-var.yaml
+pod/pod-secret-var created
+[root@control ~]# kubectl exec -it pod-secret-var -- /bin/sh
+/ # echo $PASSWORD
+P@ssw0rd
+/ # echo $USERNAME
+Alice
+/ #
 ```
 
