@@ -661,4 +661,36 @@ nginx-everynode-nzsj2   1/1     Running   0          2m14s   192.168.235.136   w
 
 ![managing storage](./png/managing-storage.png)
 
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sharedvolume
+spec:
+  containers:
+  - name: centos1
+    image: centos:7
+    command:
+      - sleep
+      - "3600"
+    volumeMounts:
+      - mountPath: /centos1
+        name: test
+  - name: centos2
+    image: centos:7
+    command:
+      - sleep
+      - "3600"
+    volumeMounts:
+      - mountPath: /centos2
+        name: test
+  volumes:
+    - name: test
+      emptyDir: {}
+```
+```
+[root@control ~]# kubectl apply -f shared-volume.yaml
+pod/sharedvolume created
+```
 
+![shared volume](./png/shared-volume.png)
