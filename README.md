@@ -692,5 +692,53 @@ spec:
 [root@control ~]# kubectl apply -f shared-volume.yaml
 pod/sharedvolume created
 ```
+see more `kubectl explain pod.spec.volumes`
 
 ![shared volume](./png/shared-volume.png)
+
+
+## Configuring PV Storage
+
+pv.yaml
+```yaml
+kind: PersistentVolume
+apiVersion: v1
+metadata:
+  name: pv-volume
+  labels:
+    type: local
+spec:
+  capacity:
+    storage: 2Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: '/mydata'
+```
+```bash
+[root@control ~]# kubectl apply -f pv.yaml
+persistentvolume/pv-volume created
+[root@control ~]# kubectl get pv
+NAME        CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS      CLAIM   STORAGECLASS   REASON   AGE
+pv-volume   2Gi        RWO            Retain           Available                                   48s
+
+```
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-nfs
+  labels:
+    type: nfs
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    path: /data
+    server: myserver
+    readOnly: false
+```
+
