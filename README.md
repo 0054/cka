@@ -34,7 +34,7 @@ Table of Contents
 2. disable selinux
 3. disable swap
 4. install docker
-    ```
+    ```bash
     yum install -y vim yum-utils device-mapper-persistent-data lvm2
     yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
     yum install -y docker-ce
@@ -57,7 +57,7 @@ Table of Contents
     systemctl enable docker
     ``` 
 5. configure /etc/hosts
-    ```
+    ```bash
     cat >> /etc/hosts << EOF 
     {
       10.10.10.1 control.example.com control
@@ -68,7 +68,7 @@ Table of Contents
     EOF
     ```
 6. install kube tools
-    ```
+    ```bash
     cat <<EOF > /etc/yum.repos.d/kubernetes.repo
     [kubernetes]
     name=Kubernetes
@@ -83,7 +83,7 @@ Table of Contents
     systemctl enable --now kubelet
     ```
 7. configure sysctl
-    ```
+    ```bash
     cat <<EOF >  /etc/sysctl.d/k8s.conf
     net.bridge.bridge-nf-call-ip6tables = 1
     net.bridge.bridge-nf-call-iptables = 1
@@ -94,13 +94,13 @@ Table of Contents
 
 ### Simple Cluster
 on the control node run kubeadm
-```
+```bash
 kubeadm init --pod-network-cidr=192.168.0.0/16
 ```
 в выводе команды будет инструкция для подключения сохраняем на всякий случай
 настраиваем  для нужного пользователя подключение
 затем устанавливаем нетворк аддон в моём случае calico
-```
+```bash
 curl https://docs.projectcalico.org/manifests/calico.yaml -O
 kubectl apply -f calico.yaml
 [admin@control ~]$ kubectl get pods -n kube-system 
@@ -118,12 +118,12 @@ kube-scheduler-control                   1/1     Running   0          14m
 waiting for calico running
 
 затем заходим на воркеры и джойним их к мастеру используя последнюю команду kubeadm join из вывода kubeadm init
-```
+```bash
 [root@worker1 ~]# kubeadm join 1.2.3.4:6443 --token ipb559.1ketsik9hzec4q5e \
     --discovery-token-ca-cert-hash sha256:7e6283511a5159ab1c389bedf32fd91b6ca764cb980587fdfc4403f924d4f5dc 
 ```
 on the control node, check that the workers have joined:
-```
+```bash
 [root@control ~]# kubectl get nodes
 NAME      STATUS   ROLES    AGE   VERSION
 control   Ready    master   39m   v1.19.3
@@ -133,11 +133,11 @@ worker3   Ready    <none>   15m   v1.19.3
 ```
 
 повесить лейбл на ноду:
-```
+```bash
 kubectl label nodes worker1 node-role.kubernetes.io/worker=worker
 ```
 убрать лейбл с ноды:
-```
+```bash
 kubectl label nodes worker1 node-role.kubernetes.io/worker-
 ```
 
@@ -183,7 +183,7 @@ kubectl label nodes worker1 node-role.kubernetes.io/worker-
   - **kubectl proxy --port=8001 &**
   - **curl http://localhost:8001**
 for example:
-```
+```bash
 [root@control ~]# kubectl proxy --port=8001 &
 [1] 2643
 [root@control ~]# Starting to serve on 127.0.0.1:8001
@@ -213,7 +213,7 @@ mynginx                    0/1     Terminating         0          5h6m
 - The etcdctl command can be used to interrogate and manage the etcd database
 - Different versions of the command exist: etcdctl2 is to interact with v2 of the API, and etcdctl version independent
 
-```
+```bash
 yum install -y etcd
 etcdctl -h
 ETCDCTL_API=3 etcdctl -h
@@ -242,7 +242,7 @@ Four namespaces are defined when a cluster is created
 - **kubectl get ns dev -o yaml**
 
 ## Managing Pods and Deployments
-```
+```bash
 kubectl create deployment --image=nginx nginx1
 kubectl get all
 [root@control ~]# kubectl get all
@@ -259,11 +259,11 @@ NAME                               DESIRED   CURRENT   READY   AGE
 replicaset.apps/nginx1-b97c459f7   1         1         1       15s
 ```
 ### Easy way to get YAML file example
-```
+```bash
 kubectl create deployment --dry-run --image=nginx nginx0 -o yaml > deployment-example.yaml
 ```
 ### Managing Deployment Scalability
-```
+```bash
 [root@control ~]# kubectl get deployments.apps
 NAME     READY   UP-TO-DATE   AVAILABLE   AGE
 nginx1   1/1     1            1           42m
@@ -279,12 +279,12 @@ nginx1-b97c459f7-n6m7h   1/1     Running   0          43m
 nginx1-b97c459f7-xsbnf   1/1     Running   0          18s
 ```
 OR use
-```
+```bash
 kubectl edit deployments.apps nginx1
 ```
 
 ## Labels 
-```
+```bash
 [root@control ~]# kubectl get all --show-labels 
 NAME                         READY   STATUS    RESTARTS   AGE    LABELS
 pod/nginx1-b97c459f7-lc8gk   1/1     Running   0          6m1s   app=nginx1,pod-template-hash=b97c459f7
@@ -312,7 +312,7 @@ NAME                               DESIRED   CURRENT   READY   AGE
 replicaset.apps/nginx1-b97c459f7   3         3         3       64m
 ```
 ### Deleting Labels
-```
+```bash
 [root@control ~]# kubectl get pods
 NAME                     READY   STATUS    RESTARTS   AGE
 nginx1-b97c459f7-lc8gk   1/1     Running   0          31m
@@ -336,7 +336,7 @@ New Pod was created becouse Deployment tracks labels too
 
 ## Rolling Updates
 
-```
+```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -365,7 +365,7 @@ Deployment ensures that only a certain number of Pods are down while they are be
 Deployment also ensures that only a certain number of Pods are created above the desired number of Pods. By default, it ensures that at most 125% of the desired number of Pods are up (25% max surge).
 
 For Example:
-```
+```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -390,7 +390,7 @@ spec:
       - name: nginx
         image: nginx:1.8
 ```
-```
+```bash
 [root@control ~]# kubectl apply -y rollin.yaml
 deployment.apps/rolling-nginx created
 [root@control ~]# kubectl rollout history deployment rolling-nginx 
@@ -399,7 +399,7 @@ REVISION  CHANGE-CAUSE
 1         <none>
 ```
 then change ...containers.image  version
-```
+```bash
 kubectl edit deployments rolling-ngine
 deployment.apps/rolling-nginx edited
 kubectl get replicasets.apps
@@ -446,7 +446,7 @@ deployment.apps/rolling-nginx rolled back
 - Init containers are defined using the initContainers filed in the Pod spec
 
 for example:
-```
+```yaml
 apiVersion: v1
 kind: Pod
 metadata: 
@@ -496,7 +496,7 @@ StatefulSets have a number of limitations, and for that reason should only be us
 
 
 ### Example
-```
+```yaml
 apiVersion: v1
 kind: Service
 metadata:
@@ -560,7 +560,7 @@ spec:
 
 
 example:
-```
+```yaml
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -605,7 +605,7 @@ spec:
           path: /var/lib/docker/containers
 ```
 
-```
+```bash
 [root@control ~]# kubectl apply -f daemonset-fluentd.yaml
 daemonset.apps/fluentd-elasticsearch created
 [root@control ~]# kubectl get daemonsets.apps -n kube-system
@@ -622,7 +622,7 @@ fluentd-elasticsearch-r49hf              1/1     Running   0          2m2s
 ```
 
 ### task: run a pod on each worker
-```
+```yaml
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -642,7 +642,8 @@ spec:
       - name: nginx-everynode
         image: nginx
 ```
-```
+
+```bash
 [root@control ~]# kubectl apply -f daemonset-example.yaml
 daemonset.apps/nginx-everynode created
 [root@control ~]# kubectl get pods --selector name=nginx-everynode -o wide
@@ -661,7 +662,7 @@ nginx-everynode-nzsj2   1/1     Running   0          2m14s   192.168.235.136   w
 
 ![managing storage](./png/managing-storage.png)
 
-```
+```yaml
 apiVersion: v1
 kind: Pod
 metadata:
@@ -688,7 +689,8 @@ spec:
     - name: test
       emptyDir: {}
 ```
-```
+
+```bash
 [root@control ~]# kubectl apply -f shared-volume.yaml
 pod/sharedvolume created
 ```
