@@ -33,6 +33,7 @@ Table of Contents
   - [ConfigMaps and Secrets](#configmaps-and-secrets)
     - [Managing ConfigMaps](#managing-configmaps)
     - [Managing Secrets](#managing-secrets)
+- [Managing Pod Networking](#managing-pod-networking)
 
 ## Preparing Hosts
 
@@ -1202,3 +1203,7 @@ Alice
 / #
 ```
 
+## Managing Pod Networking
+
+![pod networking](./png/pod-networking.png)
+![pod pause container](./png/pod-pause-container)
