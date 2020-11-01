@@ -1282,4 +1282,4 @@ PING 192.168.182.15 (192.168.182.15): 56 data bytes
 
 ### Service Networking
 
-![service networking](./png/service-netwroking.png)
+![service networking](./png/service-networking.png)
