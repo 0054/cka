@@ -174,7 +174,7 @@ Unlike other types of controllers which run as part of the kube-controller-manag
 [NGINX Ingress Controller](https://www.nginx.com/products/nginx/kubernetes-ingress-controller)
 - For NGINX Ingress controller, use the image nginx/nginx-ingress from DockerHub.
 - Clone the Ingress controller repo and change into the deployments folder:
-  ```bash
+```bash
 [root@control ~]# git clone https://github.com/nginxinc/kubernetes-ingress
 [root@control ~]# cd kubernetes-ingress/deployments/
 [root@control deployments]# ll
@@ -189,7 +189,7 @@ drwxr-xr-x 2 root root 4096 Nov  2 00:17 service
 [root@control deployments]# git checkout v1.9.0
 Note: checking out 'v1.9.0'.
 ...
-  ```
+```
 
 ### Configure RBAC
 - Create a namespace and a service account for the Ingress controller:
