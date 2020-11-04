@@ -58,7 +58,7 @@ Table of Contents
   - [Affinity](#affinity)
     - [Node Affinity](#node-affinity)
     - [Pod Affinity](#pod-affinity)
-      - [Pod Affinity topologyKey](#pod-affinity-topology)
+      - [Pod Affinity topologyKey](#pod-affinity-topologykey)
       - [Applying Pod anti Affinity](#applying-pod-anti-affinity)
 
 # Preparing Hosts
