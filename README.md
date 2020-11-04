@@ -60,6 +60,7 @@ Table of Contents
     - [Pod Affinity](#pod-affinity)
       - [Pod Affinity topologyKey](#pod-affinity-topologykey)
       - [Applying Pod anti Affinity](#applying-pod-anti-affinity)
+  - [Taints And Toletations](#taints-and-tolerations)
 
 # Preparing Hosts
 
@@ -1938,4 +1939,97 @@ redis-cache-d5f6b6855-29mn8   1/1     Running   0          6m51s   192.168.189.8
 redis-cache-d5f6b6855-m5mb8   1/1     Running   0          6m51s   192.168.235.143   worker1   <none>           <none>
 redis-cache-d5f6b6855-vtv82   1/1     Running   0          2m34s   192.168.182.18    worker3   <none>           <none>
 ```
+
+## Taints And Tolerations
+
+### Taints
+
+- Taints are applied to a node mark that the node should nor accept any Pod that doesn't tolerate the taint
+- Tolerations are applied to Pods and allow ( but do not require) Pods to schedule on nodes with matching Taints - so they are an exception to taints that are applied
+- Where Affinities are used on Pods to attract them to specific nodes; Taints allow a node to repel a set of Pods
+- Taints and Toledations are used to ensure Pods are nor scheduled on inappropriate nodes, and thus make sure that dedicared nodes can be configured for dedicared tasks
+- Taints and Tolerations have no effect on daemonsets
+
+#### Taint Types:
+
+Three types of Taint can be applied:
+- NoSchedule: does not schedule new Pods
+- PreferNoSchefule: does not schedule new Pods, unless there is no other option
+- NoExecute: migrates all Pods away from this node
+If the Pod has a toleration however, it will ignore the taint
+
+```bash
+[root@control ~]# kubectl taint nodes worker4 example-key=value:NoSchedule
+[root@control ~]# kubectl get nodes worker4 -o yaml
+...
+spec:
+  taints:
+  - effect: NoSchedule
+    key: example-key
+    value: value
+...
+[root@control ~]# kubectl create deployment nginx-taint --image=nginx
+deployment.apps/nginx-taint created
+[root@control ~]# kubectl scale deployment nginx-taint --replicas=6
+deployment.apps/nginx-taint scaled
+[root@control ~]# kubectl get pods -o wide --selector app=nginx-taint
+NAME                          READY   STATUS    RESTARTS   AGE   IP                NODE      NOMINATED NODE   READINESS GATES
+nginx-taint-cc69bf58c-6wn9z   1/1     Running   0          75s   192.168.182.20    worker3   <none>           <none>
+nginx-taint-cc69bf58c-8dfn2   1/1     Running   0          75s   192.168.189.82    worker2   <none>           <none>
+nginx-taint-cc69bf58c-9mdmx   1/1     Running   0          75s   192.168.235.147   worker1   <none>           <none>
+nginx-taint-cc69bf58c-d8z5p   1/1     Running   0          75s   192.168.235.146   worker1   <none>           <none>
+nginx-taint-cc69bf58c-drv4s   1/1     Running   0          92s   192.168.182.19    worker3   <none>           <none>
+nginx-taint-cc69bf58c-hhbgf   1/1     Running   0          75s   192.168.189.81    worker2   <none>           <none>
+```
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: nginx-toleration
+  name: toleration-deployment
+spec:
+  replicas: 6
+  selector:
+    matchLabels:
+      app: nginx-toleration
+  template:
+    metadata:
+      labels:
+        app: nginx-toleration
+    spec:
+      containers:
+      - image: nginx-toleration
+        name: nginx
+        ports:
+          - containerPort: 80
+      tolerations:
+      - key: 'example-key'
+        operator: 'Exists'
+        effect: 'NoSchedule'
+```
+
+```bash
+[root@control ~]# kubectl apply -f deployment-toleration.yaml
+deployment.apps/toleration-deployment created
+[root@control ~]# kubectl get pods --selector app=nginx-toleration -o wide | awk '{print $7}'
+NODE
+worker1
+worker3
+worker3
+worker2
+worker4
+worker4
+```
+remove taint:
+```bash
+[root@control ~]# kubectl taint node worker4 example-key:NoSchedule-
+node/worker4 untainted
+```
+
+
+
+
+
 
