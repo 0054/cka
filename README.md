@@ -55,6 +55,11 @@ Table of Contents
   - [Understanding API Extentions](#understanding-api-extentions)
   - [Adding Custom Reources](#adding-custom-resources)
 - [Managing Scheduling](#managing-scheduling)
+  - [Affinity](#affinity)
+    - [Node Affinity](#node-affinity)
+    - [Pod Affinity](#pod-affinity)
+      - [Pod Affinity topologyKey](#pod-affinity-topology)
+      - [Applying Pod anti Affinity](#applying-pod-anti-affinity)
 
 # Preparing Hosts
 
@@ -1871,7 +1876,7 @@ taint {node-role.kubernetes.io/master: }, that the pod didn't tolerate, 3 node(s
 
 ```
 
-#### Applying Pod (anti)Affinity
+#### Applying Pod anti Affinity
 - Pod antiAffinity rules are typically applied to Deployments or ReplicaSets, to ensure that workloads are co-located in the same topology
 - Use it, tor example, to ensure that in a 3-node cluster, a web application is always running with an in-memory cache such as redis
 - And at the same time, if multiple replicas are used, specify that different instances of thhe same Pod are never scheduled to run on the same node
