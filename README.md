@@ -291,6 +291,14 @@ Create a service with the type NodePort:
 [root@control deployments]# kubectl apply -f service/nodeport.yaml
 service/nginx-ingress created
 ```
+**Note**: you may need to add an externalIPs
+```yaml
+...
+spec:
+  externalIPs:
+    - 1.1.1.1 # host ip address
+...
+```
 
 ## Uninstall the Ingress Controller
 - Delete the nginx-ingress namespace to uninstall the Ingress controller along with all the auxiliary resources that were created:
@@ -1471,4 +1479,74 @@ service "busy1" deleted
 
 ![Ingress](./png/ingress.png)
 
+
+```yaml
+piVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: minimal-ingress
+  # annotations:
+  #   nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: "control.example.com"
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: nginx0-svc
+            port:
+              number: 80
+```
+```bash
+[root@control ~]# hostname -f
+control.example.com
+[root@control ~]# kubectl get ingress
+NAME              CLASS   HOSTS                 ADDRESS   PORTS   AGE
+minimal-ingress   nginx   control.example.com             80      2d1h
+[root@control ~]# kubectl describe ingress minimal-ingress 
+Warning: extensions/v1beta1 Ingress is deprecated in v1.14+, unavailable in v1.22+; use networking.k8s.io/v1 Ingress
+Name:             minimal-ingress
+Namespace:        default
+Address:          
+Default backend:  default-http-backend:80 (<error: endpoints "default-http-backend" not found>)
+Rules:
+  Host                 Path  Backends
+  ----                 ----  --------
+  control.example.com  
+                       /   nginx0-svc:80   192.168.235.140:80)
+Annotations:           <none>
+Events:
+  Type     Reason          Age                 From                      Message
+  ----     ------          ----                ----                      -------
+  Normal   AddedOrUpdated  3m12s (x6 over 2d)  nginx-ingress-controller  Configuration for default/minimal-ingress was added or updated
+[root@control ~]# curl $(hostname -f)
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+<style>
+    body {
+        width: 35em;
+        margin: 0 auto;
+        font-family: Tahoma, Verdana, Arial, sans-serif;
+    }
+</style>
+</head>
+<body>
+<h1>Welcome to nginx!</h1>
+<p>If you see this page, the nginx web server is successfully installed and
+working. Further configuration is required.</p>
+
+<p>For online documentation and support please refer to
+<a href="http://nginx.org/">nginx.org</a>.<br/>
+Commercial support is available at
+<a href="http://nginx.com/">nginx.com</a>.</p>
+
+<p><em>Thank you for using nginx.</em></p>
+</body>
+</html>
+```
 
