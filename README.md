@@ -50,8 +50,12 @@ Table of Contents
     - [Service Types](#service-types)
     - [Configuring Services](#configuring-services)
   - [Working with Ingress](#working-with-ingress)
+- [Managing API Object Specifications](#managing-api-objects-speifications)
+  - [Understanding API Extentions](#understanding-api-extentions)
+  - [Adding Custom Reources](#adding-custom-resources)
+- [Managing Scheduling](#managing-scheduling)
 
-## Preparing Hosts
+# Preparing Hosts
 
 1. disable firewalld
 2. disable selinux
@@ -115,7 +119,7 @@ Table of Contents
     ```
 # Install Kubernetes
 
-### Simple Cluster
+## Simple Cluster
 on the control node run kubeadm
 ```bash
 kubeadm init --pod-network-cidr=192.168.0.0/16
@@ -1556,3 +1560,348 @@ Commercial support is available at
 - The new objects are stored in the etcd database and can be accessed via the kube-apiserver
 - As a result, the **kubectl** command is available as a management interface Aggreated APIs can be used as another way to add custom resources, but this is much more complex
 - Custom resources are added o the cluster API path under `apiextensions.k8s.io/v1beta1` or `apiextensions.k8s.io/v1`
+
+## Adding Custom Reources
+
+```yaml
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: backups.stable.linux.com
+spec:
+  group: stable.linux.com
+  version: v1
+  scope: Namespaced
+  names:
+    plural: backups
+    singular: backup
+    shortNames:
+      - bk
+```
+```bash
+[root@control ~]# kubectl apply -f crd-object.yaml
+Warning: apiextensions.k8s.io/v1beta1 CustomResourceDefinition is deprecated in v1.16+, unavailable in v1.22+; use apiextensions.k8s.io/v1 CustomResourceDefinition
+customresourcedefinition.apiextensions.k8s.io/backups.stable.linux.com created
+[root@control ~]# kubectl get crd | grep backups
+backups.stable.linux.com                              2020-11-04T12:35:17Z
+```
+```yaml
+apiVersion: 'stable.linux.com/v1'
+kind: BackUp
+metadata:
+  name: mybackup
+spec:
+  timeSpec: '* * * * */5'
+  image: linux-backup-image
+  replicas: 5
+```
+```bash
+[root@control ~]# kubectl apply -f crd-backup.yaml
+backup.stable.linux.com/mybackup created
+[root@control ~]# kubectl get backups.stable.linux.com
+NAME       AGE
+mybackup   38s
+```
+
+# Managing Scheduling
+
+- Scheduling make sure that Pods are matched to Nodes so that Kubelet can run them
+- The kube-scheduler determines which nodes will run a Pod
+- Userd can set higher priority Pods
+- The scheduler uses priority functions to send a Pod spec to a specific node to be created
+- Different labels can be used to influence where a node will be scheduled 
+- Other options can also be used to influence Pod scheduling
+  - Use **NodeName** in th ePod spec to specify which node the Pod should run
+  - Use **nodeSelector** in labels to specify how to run a Pod
+  - Use **affinity, aniAffinity** or **taints**
+
+## Managing Scheduler Policies
+
+- **kube-scheduler** works with Filtering and Scoring to determine where to run a Pod
+- In filtering, a set of Nodes is found where it is feasuble to schedule the Pod because the node meets the required resources
+- In scoring, the scheduler ranks all nodes remaining after filtering to choose the most suitable Pod placement
+
+### Filtering
+
+Different options are used check if a node is eligible to run the Pod
+- PodFitsHostPorts: checks if free network ports are available
+- PodFitsResources: checks if the node has sufficient CPU and Memmory resources
+- PodMatchNodeSelector: checks if the Pod Node Delector matches the Node labels
+- CheckNodeDiskPressure: checks if a node is reporting a filesustem that is almost full, so that the Pod won't be scheduled there
+- CheckVolumeBinding: Evaluates if the volumes that are requesred can be serviced by the node using bound and unbound PVCs
+- And more see [docs](https://kubernetes.io/docs/concepts/scheduling-eviction/kube-scheduler/)
+
+### Scoring
+
+After filreting out nodes, scoring is used to evaluate remining nodes
+- SelectorSpreadPriority: spreads Pods across hosts, considering Pods that belong to the same Service, StatefulSet or ReplicaSet
+- LeastRequestedPriority: prioritized nodes according to node affinity scheduling preferences
+- And more scoring factors are considered
+
+## Using nodeSelector and nodeNmae
+- The nodeSelector field in the pod.spec specifies a key-value pair that must match a label which is set on nodes that are eligible to run the Pod
+- Use **kubectl label nodes worker1.example.com disktype=ssd** to set the label on a Pod
+- Use **nodeSelector: disktype: ssd** in the pod.spec to match the Pod to the specific node
+- **NodeName** is part of the pod.spec and can be used to always run a Pod on a with a specific name
+  - Not recommended: if that node is not corrently available, the Pod will never run
+
+```bash
+[root@control ~]# kubectl label nodes worker2 disktype=ssd
+node/worker2 labeled
+[root@control ~]# kubectl get nodes -l disktype=ssd
+NAME      STATUS   ROLES    AGE    VERSION
+worker2   Ready    worker   4d5h   v1.19.3
+```
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-selector
+  labels:
+    app: pod-selector
+spec:
+  containers:
+  - name: pod-selector
+    image: nginx
+    imagePullPolicy: IfNotPresent
+  nodeSelector:
+    disktype: ssd
+```
+
+```bash
+[root@control ~]# kubectl apply -f pod-selector.yaml
+pod/pod-selector created
+[root@control ~]# kubectl get pods -l app=pod-selector -o wide
+NAME           READY   STATUS    RESTARTS   AGE   IP               NODE      NOMINATED NODE   READINESS GATES
+pod-selector   1/1     Running   0          40s   192.168.189.79   worker2   <none>           <none>
+[root@control ~]# kubectl describe pod pod-selector 
+...
+Events:
+  Type    Reason     Age   From               Message
+  ----    ------     ----  ----               -------
+  Normal  Pulled     2m1s  kubelet            Container image "nginx" already present on machine
+  Normal  Created    2m1s  kubelet            Created container pod-selector
+  Normal  Started    2m1s  kubelet            Started container pod-selector
+  Normal  Scheduled  109s  default-scheduler  Successfully assigned default/pod-selector to worker2
+```
+
+## Affinity
+- nodeSelector provides a simple way to constrain nodes, the (anti) Affinity feature enhances the options
+  - it uses a more expressive language
+  - it offers an option to use soft rules 
+  - it can work with labels that are set on other pods, to make sure that specific pods cannot be co-located
+- Also, two types of Affinity are offered
+  - Node Affinity sets Affinity rules on nodes
+  - inter-pod Affinity specifies rules between Pods
+
+### Node Affinity
+
+- Node Affinity is like nodeSelector and allows you to constrain which nodes a Pod is eligible to be scheduled on
+- There are two types:
+  - **requiredDuringSchedulingIgnoredDuringExecution**: this is hard requirement and specifies that rules must be met for a Pod to be scheduled on a node
+  - **preferredDuringSchedulingIgnoredDuringExecution**: this prefers that a Pod is scheduled on a node, but will not enforce it
+    - A weight is used to inficate how hard this rule should be enforced
+
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: with-node-affinity
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: kubernetes.io/e2e-az-name
+            operator: In
+            values:
+            - e2e-az1
+            - e2e-az2
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 1
+        preference:
+          matchExpressions:
+          - key: another-node-label-key
+            operator: In
+            values:
+            - another-node-label-value
+  containers:
+  - name: with-node-affinity
+    image: nginx
+
+```
+
+```bash
+[root@control ~]# kubectl apply -f pod-with-node-affinity.yaml
+pod/with-node-affinity created
+[root@control ~]# kubectl get pods with-node-affinity -o wide
+NAME                 READY   STATUS    RESTARTS   AGE    IP       NODE     NOMINATED NODE   READINESS GATES
+with-node-affinity   0/1     Pending   0          3m8s   <none>   <none>   <none>           <none>
+[root@control ~]# kubectl describe pods with-node-affinity
+...
+Events:
+  Type     Reason            Age                  From               Message
+  ----     ------            ----                 ----               -------
+  Warning  FailedScheduling  65s (x4 over 3m55s)  default-scheduler  0/4 nodes are available: 4 node(s) didn't match node selector.
+```
+
+Lets fix requiredDuring...
+```bash
+[root@control ~]# kubectl delete -f pod-with-node-affinity.yaml
+pod "with-node-affinity" deleted
+```
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: with-node-affinity
+spec:
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 1
+        preference:
+          matchExpressions:
+          - key: another-node-label-key
+            operator: In
+            values:
+            - another-node-label-value
+  containers:
+  - name: with-node-affinity
+    image: nginx
+```
+```bash
+[root@control ~]# kubectl apply -f pod-with-node-affinity.yaml
+pod/with-node-affinity created
+[root@control ~]# kubectl get pods with-node-affinity
+NAME                 READY   STATUS    RESTARTS   AGE
+with-node-affinity   1/1     Running   0          2m48s
+
+```
+
+### Pod Affinity
+
+- Pod Affinity compares labels in Pods that need to be scheduled with labels of Pods already running on a node
+- Pod anti-Affinity is doing the opposite
+- Rules are formulared as "the Pod should run in an X if that X is already running one or more Pods that meet rule Y"
+  - Y is expressed as a LabelSelector with an oprional list of namespaves
+  - X is a topology domain name like node, rack, zone, etc., expressed by using a topologyKey which is the key for the node label that the system usrs
+- Note that Pod Affinity negatively impacts performance in large clusters
+- Using Pod Affiniry requres all nodes in the cluster to be labeled with a topologyKey
+
+#### Pod Affinity topologyKey
+- In Pod Affinity, the **topologyKey** plays an important role 
+- Typically, they are used to create logical groups (zones)
+- Nodes as well as Pods can be identified with a topologyKey
+- A **topologyKey** can also be used as a unique node identifier
+- For additional explanation and examples, see [docs](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/)
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: with-pod-affinity
+spec:
+  affinity:
+    podAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+          - key: security
+            operator: In
+            values:
+            - S1
+        topologyKey: failure-domain.beta.kubernetes.io/zone
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+            - key: security
+              operator: In
+              values:
+              - S2
+          topologyKey: failure-domain.beta.kubernetes.io/zone
+  containers:
+  - name: with-pod-affinity
+    image: k8s.gcr.io/pause:2.0
+```
+```bash
+[root@control ~]# kubectl apply -f pod-with-pod-affinity.yaml
+pod/with-pod-affinity created
+[root@control ~]# kubectl describe pod  with-pod-affinity
+...
+Events:
+  Type     Reason            Age                From               Message
+  ----     ------            ----               ----               -------
+  Warning  FailedScheduling  44s (x2 over 44s)  default-scheduler  0/4 nodes are available: 1 node(s) had
+taint {node-role.kubernetes.io/master: }, that the pod didn't tolerate, 3 node(s) didn't match pod affinity rules, 3 node(s) didn't match pod affinity/anti-affinity.
+
+```
+
+#### Applying Pod (anti)Affinity
+- Pod antiAffinity rules are typically applied to Deployments or ReplicaSets, to ensure that workloads are co-located in the same topology
+- Use it, tor example, to ensure that in a 3-node cluster, a web application is always running with an in-memory cache such as redis
+- And at the same time, if multiple replicas are used, specify that different instances of thhe same Pod are never scheduled to run on the same node
+
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-cache
+spec:
+  selector:
+    matchLabels:
+      app: store
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        app: store
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - store
+            topologyKey: "kubernetes.io/hostname"
+      containers:
+      - name: redis-server
+        image: redis:3.2-alpine
+```
+
+```bash
+[root@control ~]# kubectl apply -f redis-with-pod-affinity.yaml
+deployment.apps/redis-cache created
+[root@control ~]# kubectl get deployments.apps redis-cache -o wide
+NAME          READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS     IMAGES             SELECTOR
+redis-cache   3/3     3            3           52s   redis-server   redis:3.2-alpine   app=store
+[root@control ~]# kubectl get pods -l app=store -o wide
+NAME                          READY   STATUS    RESTARTS   AGE     IP                NODE      NOMINATED NODE   READINESS GATES
+redis-cache-d5f6b6855-29mn8   1/1     Running   0          2m32s   192.168.189.80    worker2   <none>           <none>
+redis-cache-d5f6b6855-gt4sc   1/1     Running   0          2m32s   192.168.182.17    worker3   <none>           <none>
+redis-cache-d5f6b6855-m5mb8   1/1     Running   0          2m32s   192.168.235.143   worker1   <none>           <none>
+[root@control ~]# kubectl drain worker3 --force --ignore-daemonsets
+...
+[root@control ~]# kubectl get pods -l app=store -o wide
+NAME                          READY   STATUS    RESTARTS   AGE     IP                NODE      NOMINATED NODE   READINESS GATES
+redis-cache-d5f6b6855-29mn8   1/1     Running   0          6m26s   192.168.189.80    worker2   <none>           <none>
+redis-cache-d5f6b6855-m5mb8   1/1     Running   0          6m26s   192.168.235.143   worker1   <none>           <none>
+redis-cache-d5f6b6855-vtv82   0/1     Pending   0          2m9s    <none>            <none>    <none>           <none>
+[root@control ~]# kubectl uncordon worker3
+node/worker3 uncordoned
+[root@control ~]# kubectl get pods -l app=store -o wide
+NAME                          READY   STATUS    RESTARTS   AGE     IP                NODE      NOMINATED NODE   READINESS GATES
+redis-cache-d5f6b6855-29mn8   1/1     Running   0          6m51s   192.168.189.80    worker2   <none>           <none>
+redis-cache-d5f6b6855-m5mb8   1/1     Running   0          6m51s   192.168.235.143   worker1   <none>           <none>
+redis-cache-d5f6b6855-vtv82   1/1     Running   0          2m34s   192.168.182.18    worker3   <none>           <none>
+```
+
