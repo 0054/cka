@@ -1550,3 +1550,11 @@ Commercial support is available at
 </html>
 ```
 
+# Managing API Object Specifications
+
+## Understanding API Extentions
+- The Kubernetes APIs have been developed to be extensible
+- Custom Resource Defenitions (CRD) provide in an easy solution to add objects to the API
+- The new objects are stored in the etcd database and can be accessed via the kube-apiserver
+- As a result, the **kubectl** command is available as a management interface Aggreated APIs can be used as another way to add custom resources, but this is much more complex
+- Custom resources are added o the cluster API path under `apiextensions.k8s.io/v1beta1` or `apiextensions.k8s.io/v1`
