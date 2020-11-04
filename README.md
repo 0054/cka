@@ -6,6 +6,7 @@ Table of Contents
 - [Preparing Hosts](#preparing-hosts)
 - [Install Kubernetes](#install-kubernetes)
   - [Simple Cluster](#simple-cluster)
+  - [Joining your nodes](#joining-your-nodes)
 - [Ingress Controller](#ingress-controller)
   - [Installation with Manifests](#installation-with-manifests)
     - [Configure RBAC](#configure-rbac)
@@ -144,7 +145,11 @@ kube-scheduler-control                   1/1     Running   0          14m
 ```
 waiting for calico running
 
-затем заходим на воркеры и джойним их к мастеру используя последнюю команду kubeadm join из вывода kubeadm init
+## Joining your nodes
+To add new nodes to your cluster do the following for each machine:
+1. ssh to the node
+2. Become root
+3. Run the command **kubeadm join ...**
 ```bash
 [root@worker1 ~]# kubeadm join 1.2.3.4:6443 --token ipb559.1ketsik9hzec4q5e \
     --discovery-token-ca-cert-hash sha256:7e6283511a5159ab1c389bedf32fd91b6ca764cb980587fdfc4403f924d4f5dc 
@@ -158,15 +163,39 @@ worker1   Ready    <none>   18m   v1.19.3
 worker2   Ready    <none>   15m   v1.19.3
 worker3   Ready    <none>   15m   v1.19.3
 ```
+By default, tokens expire after 24 hours. If you are joining a node to the cluster after the current token has expired, you can create a new token by running the following command on the control-plane node:
+```bash
+[root@control ~]# kubeadm token create
+W1104 20:01:53.359885   32274 configset.go:348] WARNING: kubeadm cannot validate component configs for API groups [kubelet.config.k8s.io kubeproxy.config.k8s.io]
+ogybwf.fa4c0tc1vrhcda1x
+```
+If you don't have the value of --discovery-token-ca-cert-hash, you can get it by running the following command chain on the control-plane node:
+```bash
+[root@control ~]# openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | \
+>    openssl dgst -sha256 -hex | sed 's/^.* //'
+7e6283511a5159ab1c389bedf32fd91b6ca764cb980587fdfc4403f924d4f5dc
+```
+on the worker node:
+```bash
+[root@worker4 ~]# kubeadm join --token ogybwf.fa4c0tc1vrhcda1x 10.31.11.241:6443 --discovery-token-ca-cert-hash sha256:7e6283511a5159ab1c389bedf32fd91b6ca764cb980587fdfc4403f924d4f5dc
+[root@control ~]# kubectl get nodes  
+NAME      STATUS   ROLES    AGE     VERSION
+control   Ready    master   4d9h    v1.19.3
+worker1   Ready    worker   4d9h    v1.19.3
+worker2   Ready    worker   4d9h    v1.19.3
+worker3   Ready    worker   4d9h    v1.19.3
+worker4   Ready    <none>   6m47s   v1.19.3
+```
 
-повесить лейбл на ноду:
+assign a lable to a worker:
 ```bash
 kubectl label nodes worker1 node-role.kubernetes.io/worker=worker
 ```
-убрать лейбл с ноды:
+remove the label from the worker:
 ```bash
 kubectl label nodes worker1 node-role.kubernetes.io/worker-
 ```
+
 # Ingress Controller
 under construction
 [Ingress Controllers](https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/)
