@@ -61,6 +61,12 @@ Table of Contents
       - [Pod Affinity topologyKey](#pod-affinity-topologykey)
       - [Applying Pod anti Affinity](#applying-pod-anti-affinity)
   - [Taints And Toletations](#taints-and-tolerations)
+    - [Taints](#taints)
+      - [Taint Types](#taints-types)
+      - [Tolerations](#tolerations)
+  - [Resource Restrictions](#resource-restrictions)
+- [Security](#security)
+
 
 # Preparing Hosts
 
@@ -1950,7 +1956,7 @@ redis-cache-d5f6b6855-vtv82   1/1     Running   0          2m34s   192.168.182.1
 - Taints and Toledations are used to ensure Pods are nor scheduled on inappropriate nodes, and thus make sure that dedicared nodes can be configured for dedicared tasks
 - Taints and Tolerations have no effect on daemonsets
 
-#### Taint Types:
+#### Taint Types
 
 Three types of Taint can be applied:
 - NoSchedule: does not schedule new Pods
@@ -1981,6 +1987,8 @@ nginx-taint-cc69bf58c-d8z5p   1/1     Running   0          75s   192.168.235.146
 nginx-taint-cc69bf58c-drv4s   1/1     Running   0          92s   192.168.182.19    worker3   <none>           <none>
 nginx-taint-cc69bf58c-hhbgf   1/1     Running   0          75s   192.168.189.81    worker2   <none>           <none>
 ```
+
+### Tolerations
 
 ```yaml
 apiVersion: apps/v1
@@ -2028,8 +2036,105 @@ remove taint:
 node/worker4 untainted
 ```
 
+## Resource Restrictions
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-restriction
+  labels:
+    app: pod-restriction
+spec:
+  containers:
+  - name: db
+    image: mysql
+    imagePullPolicy: IfNotPresent
+    env:
+    - name: MYSQL_ROOT_PASSWORD
+      value: 'password'
+    resources:
+      requests:
+        memory: '64Mi'
+        cpu: '250m'
+      limits:
+        memory: '128Mi'
+        cpu: '500m'
+  - name: wp
+    image: wordpress
+    resources:
+      requests:
+        memory: '64Mi'
+        cpu: '250m'
+      limits:
+        memory: '128Mi'
+        cpu: '500m'
+```
 
 
+# Security
 
+## API Access
+
+- The API provides access to all the Kubernetes configuration
+- The API servers on port 6443 by default
+- The API often is self-signed
+  - See the Root certificate for the API server certificate in **$USER/.kube/config**
+- To get access to the API, a user needs to present its own client certifitate during the authentication process
+- Whenever valid key material is presented, a user can authenticate in Kubernetes
+
+![API Access](./png/api-access.png)
+
+### Authentication
+
+- Authentication: Authenticator Modules are used to include client certificates, password ar tokens to handle authentication of human and service accounts
+  - Human accounts typically use client certificates
+  - Service accounts typically use tokens
+- Reuests that cannot be authenticated are rejected with HTTP status code 401
+- Kubernetes doesn't have User objects. A User is just a set of client certificates
+
+### Authorization
+
+- After estabilishig that a request comes from a specific user, it must be authorized
+- Kubernetes is doing this by using Authorization Modes
+- An Authorization mode implements policies to allow access
+- A request is authorized if an existing policy declares that the user has permissions to complete the requested action
+- Kubernetes can use different Authorization Modules, such as RBAC and ABAC
+- Authorization Modules are specified when kube-apiserver is started
+- Use **/etc/kubernetes/manifests/kube-apiserver.yaml** to change the current setting
+
+
+```json
+{
+    "apiVersion": "abac.authorization.kubernetes.io/v1beta1",
+    "kind": "Policy",
+    "spec": {
+        "user": "bob",
+        "namespace": "projectCaribou",
+        "resource": "pods",
+        "readonly": true
+    }
+}
+```
+
+```json
+{
+  "apiVersion": "authorization.k8s.io/v1beta1",
+  "kind": "SubjectAccessReview",
+  "spec": {
+    "resourceAttributes": {
+      "namespace": "projectCaribou",
+      "verb": "get",
+      "group": "unicorn.example.org",
+      "resource": "pods"
+    }
+  }
+}
+```
+### Admission Control
+
+- After being authorizated, the admission controller is involved
+- Admission controllers implement specific functionality. The ResourceQuota controller for example will ensure that an object doesn't violate any existing wuota rules
+- In **/etc/kubernetes/manifests/kube-apiserver.yaml**, a list of additional admission controllers can be included and activated
 
 
