@@ -2285,3 +2285,39 @@ spec:
   - Create an RBAC Role
   - Create an RBAC Role binding
 
+#### Creating User Accounts
+
+1. Create a user working environment
+  - `kubectl create ns staff`
+  - `kubectl create ns students`
+  - `kubectl config get-contexts`
+
+```bash
+[root@control ~]# kubectl create ns staff
+namespace/staff created
+[root@control ~]# kubectl create ns students
+namespace/students created
+[root@control ~]# kubectl config get-contexts
+CURRENT   NAME                          CLUSTER      AUTHINFO           NAMESPACE
+*         kubernetes-admin@kubernetes   kubernetes   kubernetes-admin
+```
+
+2. Create the User account
+  - `useradd -G wheel alice`
+  - `sudo passwd alice`
+  - `openssl genrsa -out alice.key 2048`
+  - `openssl req -new -key alice.key -out alice.csr -subj "/CN=alice/O=stuff"`
+  - `openssl x509 -req -in alice.csr -CA /etc/kubernetes/pki/ca.crt -CAkey /etc/kubernetes/pki/ca.key -CAcreateserial -out alice.crt -days 180`
+
+
+3. View and update the Kubernetes Credentials Files for the new user
+  - `kubectl config view`
+  - `kubctl config set-credentials alice --client-certificate=./alice.crt --client-key=./alice.key`
+  - `kubectl config view`
+
+4. Create a Default Context for the new user
+  - `kubectl config set-context alice-context --cluster=kubernetes --namespace=staff --user=alice`
+  - `kubectl --context=alice-context get pods` will fail as no RBAC has been configured yet
+  - `kubectl config get-contexts`
+
+
