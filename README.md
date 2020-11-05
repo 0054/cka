@@ -66,13 +66,14 @@ Table of Contents
       - [Tolerations](#tolerations)
   - [Resource Restrictions](#resource-restrictions)
 - [Security](#security)
-## API Access
-## Authentication
-### Exploring User Certificates
-#### Using User Certificates
-## Authorization
-### Authorization Modes
-### ABAC
+  - [API Access](#api-access)
+  - [Authentication](#authentication)
+    - [Exploring User Certificates](#exploring-user-certificate)
+      - [Using User Certificates](#using-user-certificate)
+  - [Authorization](#authorization)
+    - [Authorization Modes](#authorization-modes)
+    - [ABAC](#abac)
+    - [RBAC](#rbac)
 
 
 # Preparing Hosts
