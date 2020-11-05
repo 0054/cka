@@ -74,6 +74,7 @@ Table of Contents
     - [Authorization Modes](#authorization-modes)
     - [ABAC](#abac)
     - [RBAC](#rbac)
+    - [Security Context](#security-context)
 
 
 # Preparing Hosts
@@ -2230,3 +2231,57 @@ The entire process for a user to be authorized through RBAC is as follows:
 - Create a role for the tasks the user needs to accomplish
 - Bind the user to the role
 - Verify the user has access
+
+
+### Security Context
+
+A security context defines privilege and access control settings for Pods or containers and can include the following
+- UID and GID based Discretionary Access Control
+- SELinux security labels
+- Linux Capabilities
+- AppArmor
+- Seccomp
+- The AllowPrivilegeEscalation setting
+- The runAsNonRoor setting
+
+setting security context
+- Security Context can be set at Pod level as well as container level
+- See **kubectl explain pod.spec.securityContext**
+- Also see **kubectl explain pod.spec.containers.securityContext**
+- Settings applied at  the container level will overwrite settings applied at the Pod level
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: security-context-demo
+spec:
+  securityContext:
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 2000
+  volumes:
+  - name: securevol
+    emptyDir: {}
+  containers:
+  - name: sec-demo
+    image: busybox
+    command: ["sh", "-c", "sleep 3600"]
+    volumeMounts:
+    - name: securevol
+      mountPath: /data/demo
+    securityContext:
+      allowPrivilegeEscalation: false
+```
+
+### Kubernetes User Accounts
+
+- Kubernetes has no User objects
+- User accounts consist of an authorized certificate that is completed with some authorization as defined in  RBAC
+  - Create a public/private key pair
+  - Create a Certificate Signing Request
+  - Sign the Certificate
+  - Create a configuration file uses these kays to access the k8s cluster
+  - Create an RBAC Role
+  - Create an RBAC Role binding
+
