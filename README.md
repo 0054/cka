@@ -75,6 +75,7 @@ Table of Contents
     - [ABAC](#abac)
     - [RBAC](#rbac)
     - [Security Context](#security-context)
+- [Networking](#networking)
 
 
 # Preparing Hosts
@@ -2406,4 +2407,40 @@ roleRef:
   name: students
   apiGroup: ""
 ```
+
+
+# Networking
+
+
+## Cloud Networking
+- In cloud environments, instances that should be running in the same broadcast domain, may be running in different physical networks
+- To work wuth this, oberlay networks are created to ensure Pod-to-Pod communication between nodes
+- The overlay network is created by the network plugin, which may be flannel, weave, calico, etc.
+- The network plugin creates overlay network, using tunnel interfaces, and creates the routing table as well
+
+
+## CNI
+
+- The CNI plugin is the common plugin used then starting **kubelet** on a worker node
+- The CNI doesn't take care of Pod-to-Pod networking, that is done by the netwroking plugin
+- CNI ensures the pluggable nature of networking, and makes it easy to select berween different network plugins suuch as linux-bridge, weave and more
+- Use of the CNI is common but not standard, if used the --network-plugin=cni argument has been used then starting the kubelet
+- Networking parameters can also be passed with other options while starting the kubelet, which happens by default on minikube
+- Other networking solutions exist as well, such as the relatively simple kubenet interface
+
+### Kubernetes Interfaces
+
+Kubernetes is standardizing on different common interfaces to manage the pluggable nature of Kubernetes parts
+- CNI is the Container Network Interface
+- CRI is the Container Runtime Interface
+- CSI is the Container Storage Interdace
+
+### CNI Configuration
+
+- If used, the CNI plugin configuration is in /etc/cni/net.d
+- Some plugins have the complete network setup in this directory
+- Other plugins have generic settings, and are using additional configuration
+- Often, the additional configuration is implemented by Pods
+- Generic CNI [documentation](https://github.com/containernetworking/cni)
+
 
