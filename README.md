@@ -2320,4 +2320,90 @@ CURRENT   NAME                          CLUSTER      AUTHINFO           NAMESPAC
   - `kubectl --context=alice-context get pods` will fail as no RBAC has been configured yet
   - `kubectl config get-contexts`
 
+5. Configure RBAC to define a staff role
+  - `vim staff-role.yaml`
+  - `kubectl create -f staff-role.yaml`
+
+6. Bind a user to the new role
+  - `vim rolebind.yaml`
+  - `kubectl create -f rolebind.yaml`
+
+7. Test it
+  - `kubectl --context=alice-context get pods`
+  - `kubectl create deployment nginx --image=nginx`
+  - `kubectl -n staff descibe role staff`
+
+```yaml
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: staff
+  name: staff
+rules:
+- apiGroups: ["", "extensions", "apps"]
+  resources: ["deployments", "replicasets", "pods"]
+  verbs: ["list", "get", "watch", "create", "update", "patch", "delete"]
+```
+
+```yaml
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: staff-role-binding
+  namespace: staff
+subjects:
+- kind: User
+  name: alice
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: staff
+  apiGroup: ""
+```
+
+```bash
+[root@control ~]# kubectl --context=alice-context get pods
+No resources found in staff namespace.
+
+```
+
+8. Create a View-only Role
+  - `vim students-role.yaml`
+  - `vim rolebindstudents.yaml`
+  - `kubectl apply -f students-role.yaml`
+  - `kubectl apply -f rolebindstudents.yaml`
+
+9. Test it
+  - `kubectl config set-context alicestudents-context --cluster=kubernetes --namespace=students --user=alie`
+  - `kubectl --context=annastudents-context get pods`
+  - `kubectl -n students describe role students`
+
+
+```yaml
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: students
+  name: students
+rules:
+- apiGroups: ["", "extensions", "apps"]
+  resources: ["deployments", "replicasets", "pods"]
+  verbs: ["list", "get", "watch"]
+```
+
+```yaml
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: students-role-binding
+  namespace: students
+subjects:
+- kind: User
+  name: alice
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: students
+  apiGroup: ""
+```
 
