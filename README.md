@@ -2444,3 +2444,99 @@ Kubernetes is standardizing on different common interfaces to manage the pluggab
 - Generic CNI [documentation](https://github.com/containernetworking/cni)
 
 
+## Network Plugins
+
+- Kubernetes Netwroking is pluggable, and different plugins are available
+- See [doc](https://kubernetes.io/docs/concepts/cluster-administration/networking/)
+- Configuration often goes through the CNI, from which networking Pods are started by kubelet on all workernodes
+
+
+## DNS
+
+- CoreDNS is the default DNS service in Kubernetes
+- its IP address is exposed by a service kube-dns that lives in the kube-system namespace
+- This service IP address should match the contents of `/etc/resolv.conf` on the Pod nodes
+- When starting a container, the Kubelet passess DNS to it, using **--cluster-dns=<dns-service-ip>**
+- Also, the kubelet is configured with its local DNS domain, using **--cluster-domain=<default-local-domain>**
+
+
+Analyzing 1:
+
+- Check Pods DNS resolver: `kubectl exec podname cat /etc/resolv.conf`
+  - The nameserver should match the IP address of the core-DNS service
+  - You may have a search path, containing `search default.svc.cluster.local svc.cluster.local cluster.local` (you should see this path being queried also)
+- Use `kubectl get pods --namespace=kube-system -l k8s-app=kube-dns` to verify the CoreDNS Pods is up
+- If Pods fail: `kubectl -n kube-system describe pods core-dns-nnn`
+- Check logs in CoreDNS Pods: `for p in $kubectl get pods --namespace=kube-system -l k8s-app=kube-dns -o name); do kubectl logs --namespace=kube-system $p; done`
+
+Analyzing 2:
+
+- Verify DNS service is up: `kubectl get svc -n kube-system` 
+- Verify the endpoints are exposed: `kubectl get ep kube-dns -n kube-system`
+
+
+Troubleshooting DNS
+
+- Disable all firewalling on all nodes: `iptables --F && iptables -t nat -F && ipdables -t mangle -F && iptables -X`
+- Restart Dockerd: `systemctl restart docker`
+-  Remove core-dns Pods: `kuectl delete pod -n kube-system -l k8s-app=kube-dns` they are automatically recreated
+- Remove your netwrok plugin pod and re-install
+
+
+## Network Policies
+
+- By default there are no restrictions to network traffic in k8s
+- Pods can always communicate, even if they're in other namespaces
+- To limit this, Network Policies can be used 
+- Network Policies need to be supported by the netwrok plugin though
+  - The flannel plugin does NOT support them
+- If in a policy there is no match, traffic will be denied
+
+
+example:
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: test-network-policy
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      role: db
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - ipBlock:
+        cidr: 172.17.0.0/16
+        except:
+        - 172.17.1.0/24
+    - namespaceSelector:
+        matchLabels:
+          project: myproject
+    - podSelector:
+        matchLabels:
+          role: frontend
+    ports:
+    - protocol: TCP
+      port: 6379
+  egress:
+  - to:
+    - ipBlock:
+      cidr: 10.0.0.0/24
+  ports:
+  - protocol: TCP
+    port: 5978
+```
+
+# Managing Cluster Nodes 
+
+## Nodes
+
+- Nodes are API objects that represent an instance in the cluster
+- The master node must be Linux, worker nodes can either run Linux, as well as Windows Server 2019
+- Nodes should have a status of ready 
+- If the kubelet on a worker node cannot be reached for 5 minutes by the kube-apiserver, it will be scheduled for deletion and the Pods will be removed 
+
